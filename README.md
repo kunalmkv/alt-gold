@@ -434,6 +434,210 @@ npm run verify:redemption:sepolia
 └─────────────────────────────────────┘
 ```
 
+
+Storage Layout Choices 
+ALTGOLDToken Contract Storage Layout
+Core State Variables Ordering
+
+```
+
+// Slot 0-39: OpenZeppelin Base Contracts (Reserved)
+// ├── ERC20Upgradeable storage
+// ├── PausableUpgradeable storage  
+// ├── AccessControlUpgradeable storage
+// ├── ReentrancyGuardUpgradeable storage
+// └── UUPSUpgradeable storage
+
+// Slot 40-45: Whitelist Management
+mapping(address => WhitelistData) private _whitelistData;     // Slot 40
+address[] private _whitelistedAddresses;                       // Slot 41
+mapping(address => uint256) private _addressIndex;             // Slot 42
+uint256 private _totalWhitelisted;                             // Slot 43
+
+// Slot 44-46: Gold Reserve Data
+GoldReserve public goldReserve;                                // Slot 44 (struct)
+uint256 public lastReserveUpdate;                              // Slot 45
+uint256 public reserveUpdateFrequency;                         // Slot 46
+
+// Slot 47-48: Minting Controls
+MintingLimits public mintingLimits;                           // Slot 47 (struct)
+MintingStats public mintingStats;                             // Slot 48 (struct)
+
+// Slot 49-52: Timelock & Requests
+mapping(uint256 => MintRequest) public mintRequests;          // Slot 49
+uint256 public nextRequestId;                                 // Slot 50
+uint256 public pendingMints;                                  // Slot 51
+
+// Slot 52-55: Circuit Breaker
+bool public circuitBreakerActive;                             // Slot 52 (packed)
+uint256 public circuitBreakerTriggeredAt;                     // Slot 53
+uint256 public anomalyCounter;                                // Slot 54
+uint256 public lastAnomalyReset;                              // Slot 55
+
+// Slot 56-59: Compliance
+bool public complianceMode;                                   // Slot 56 (packed)
+uint256 public maxTransferAmount;                             // Slot 57
+uint256 public minHoldingAmount;                              // Slot 58
+uint256 public lastComplianceCheck;                           // Slot 59
+
+// Slot 60-65: Statistics
+uint256 public totalMinted;                                   // Slot 60
+uint256 public totalBurned;                                   // Slot 61
+uint256 public transferCount;                                 // Slot 62
+uint256 public successfulMints;                               // Slot 63
+uint256 public cancelledMints;                                // Slot 64
+
+// Slot 65: Authorized Burners
+mapping(address => bool) public authorizedBurners;            // Slot 65
+
+// Slot 66-115: Storage Gap
+uint256[50] private __gap;                                    // Future-proofing
+```
+
+Reason for Token Storage Choices
+1. Whitelist Data First (Slots 40-43)
+
+Rationale: Most frequently accessed data in every transfer
+Gas Optimization: Hot storage slots for transfer operations
+Security: Critical compliance data in predictable locations
+
+2. Struct Packing Strategy
+
+```
+struct WhitelistData {
+    bool isWhitelisted;      // 1 byte
+    uint128 addedAt;         // 16 bytes  
+    uint128 removedAt;       // 16 bytes
+    address addedBy;         // 20 bytes (new slot)
+    string kycReferenceId;   // Dynamic (new slot)
+}
+```
+Reason:
+
+Bool + two uint128s fit in single slot (32 bytes)
+Timestamp precision sufficient with uint128 (valid until year 10^38)
+Address and string in separate slots (unavoidable)
+
+3. Reserve and Limits as Structs (Slots 44, 47-48)
+
+Rationale: Logical grouping of related data
+Benefit: Single SLOAD for multiple related values
+Trade-off: More complex upgrades, but cleaner code
+
+4. Circuit Breaker Variables Sequential (Slots 52-55)
+
+Rationale: Related emergency data together
+Optimization: Likely accessed together during anomaly checks
+Pattern: Status → Timestamp → Counters
+
+5. Statistics at End (Slots 60-64)
+
+Rationale: Write-only during operations, read-only for reporting
+Gas: Separated from hot paths to avoid unnecessary SLOADs
+Upgrade Safety: Can extend statistics without affecting core logic
+
+
+ALTGOLDRedemption Contract Storage Layout
+Redemption Contract Storage Organization
+
+```
+// Slot 0-39: OpenZeppelin Base (Reserved)
+
+// Slot 40-43: Token References
+IALTGOLDMinimal public altgold;                              // Slot 40
+IERC20Upgradeable public usdc;                               // Slot 41  
+uint8 public altDecimals;                                    // Slot 42 (packed)
+uint8 public usdcDecimals;                                   // Slot 42 (packed)
+
+// Slot 43-46: Economics
+uint256 public goldWeightPerALT_g6;                          // Slot 43
+uint256 public usdcPerGram;                                  // Slot 44
+uint256 public rateUpdatedAt;                                // Slot 45
+uint256 public rateValidityPeriod;                           // Slot 46
+
+// Slot 47-49: Oracle Configuration  
+AggregatorV3Interface public xauUsdFeed;                     // Slot 47
+AggregatorV3Interface public usdcUsdFeed;                    // Slot 48
+bool public useUsdcUsdFeed;                                  // Slot 49 (packed)
+uint256 public oracleStalenessThreshold;                     // Slot 50
+uint16 public maxUpdateDeviationBps;                         // Slot 51 (packed)
+uint256 public minUsdcPerGram;                               // Slot 52
+uint256 public maxUsdcPerGram;                               // Slot 53
+
+// Slot 54-57: Redemption Settings
+uint256 public minRedemptionAmount;                          // Slot 54
+uint256 public maxRedemptionAmount;                          // Slot 55
+bool public instantRedemptionEnabled;                        // Slot 56 (packed)
+bool public complianceCheckRequired;                         // Slot 56 (packed)
+
+// Slot 57-62: Limits & Cooldowns
+uint256 public globalDailyLimitUSDC;                         // Slot 57
+uint256 public userDailyLimitUSDC;                           // Slot 58
+uint256 public cooldownSeconds;                              // Slot 59
+uint256 public currentDayStart;                              // Slot 60
+uint256 public globalDailyUsedUSDC;                          // Slot 61
+
+// Slot 62-64: User Tracking (Mappings)
+mapping(address => uint256) public userDayStart;             // Slot 62
+mapping(address => uint256) public userDailyUsedUSDC;        // Slot 63
+mapping(address => uint256) public lastRedemptionTime;       // Slot 64
+mapping(address => uint256) public complianceNonce;          // Slot 65
+
+// Slot 66-67: Treasury
+uint256 public bufferUSDC;                                   // Slot 66
+uint16 public reserveRequirementBps;                         // Slot 67 (packed)
+
+// Slot 68-70: Processing Window
+ProcessingWindow public processingWindow;                    // Slot 68 (struct)
+
+// Slot 69-72: Redemption Records
+mapping(uint256 => RedemptionRecord) public redemptions;     // Slot 69
+mapping(address => uint256[]) public userRedemptions;        // Slot 70
+uint256 public nextRedemptionId;                             // Slot 71
+
+// Slot 72-77: Statistics
+uint256 public totalRedeemedALT;                             // Slot 72
+uint256 public totalPaidUSDC;                                // Slot 73
+uint256 public totalRedemptionCount;                         // Slot 74
+mapping(address => uint256) public userTotalRedeemed;        // Slot 75
+mapping(address => uint256) public userRedemptionCount;      // Slot 76
+
+// Slot 77-127: Storage Gap
+uint256[50] private __gap;
+
+```
+
+Justification for Redemption Storage Choices
+1. Token References First (Slots 40-42)
+
+Rationale: Immutable after initialization, frequently read
+Packing: Both decimals in single byte each, same slot
+Security: Critical external dependencies at known locations
+
+2. Economics Before Oracle (Slots 43-46)
+
+Rationale: Core pricing data accessed on every redemption
+Separation: Manual rates vs oracle rates clearly delineated
+Caching: usdcPerGram cached from oracle for gas savings
+
+3. Oracle Configuration Grouped (Slots 47-53)
+
+Rationale: All oracle-related settings together
+Access Pattern: Read together during price updates
+Packing: useUsdcUsdFeed bool and maxUpdateDeviationBps uint16 packed
+
+4. Daily Limit Tracking Sequential (Slots 57-61)
+
+Rationale: Reset logic accesses these together
+Pattern: Limits → Current period → Usage
+Optimization: Minimizes SLOADs during limit checks
+
+5. User Mappings Clustered (Slots 62-65)
+
+Rationale: User-specific data isolated
+Gas: Each mapping gets unique storage tree
+Privacy: User data not mixed with system data
+
 ### External Dependencies
 
 ```

@@ -26,9 +26,11 @@ async function getEnv() {
   const ALTGOLD = process.env.ALTGOLD_TOKEN_ADDRESS;
   const REDEEM = process.env.REDEMPTION_ADDRESS;
   const USDC = process.env.MOCK_USDC_ADDRESS;
+  const XAU_USD_FEED = process.env.XAU_USD_FEED;
+  const USDC_USD_FEED = process.env.USDC_USD_FEED; // optional
   if (!ALTGOLD) throw new Error("ALTGOLD_TOKEN_ADDRESS missing in .env");
   if (!USDC) throw new Error("MOCK_USDC_ADDRESS missing in .env");
-  return { ALTGOLD, REDEEM, USDC };
+  return { ALTGOLD, REDEEM, USDC, XAU_USD_FEED, USDC_USD_FEED };
 }
 
 async function getContracts(env) {
@@ -51,18 +53,15 @@ async function deploy() {
   const addr = await c.getAddress();
   console.log("✅ Deployed:", addr);
 
-  // Initialize like working setup
+  // Initialize with oracle-based params (new contract signature)
   const initialGoldWeightPerALT_g6 = ethers.parseUnits("1", 6);
-  const initialUSDCPerGram = ethers.parseUnits("65", 6);
-  const initialRateValidityPeriod = 24 * 60 * 60;
-  const enableInstantRedemption = true;
-  const requireComplianceSig = false;
-  const initialGlobalDailyLimitUSDC = ethers.parseUnits("1000000", 6);
-  const initialUserDailyLimitUSDC = ethers.parseUnits("50000", 6);
-  const initialCooldownSeconds = 3600;
-  const initialBufferUSDC = ethers.parseUnits("100000", 6);
-  const initialReserveRequirementBps = 10000;
-  const initialWindow = { enabled: false, startHour: 0, endHour: 24 };
+  if (!env.XAU_USD_FEED) throw new Error("XAU_USD_FEED missing in .env");
+  const xauFeed = env.XAU_USD_FEED;
+  const usdcFeed = env.USDC_USD_FEED && env.USDC_USD_FEED !== "0" ? env.USDC_USD_FEED : ethers.ZeroAddress;
+  const stalenessThreshold = 60 * 60; // 1 hour
+  const maxDevBps = 1000; // 10%
+  const minUPG = ethers.parseUnits("30", 6); // sanity floor
+  const maxUPG = ethers.parseUnits("200", 6); // sanity cap
 
   console.log("⏳ Initializing...");
   await (await c.initialize(
@@ -70,18 +69,38 @@ async function deploy() {
     env.ALTGOLD,
     env.USDC,
     initialGoldWeightPerALT_g6,
-    initialUSDCPerGram,
-    initialRateValidityPeriod,
-    enableInstantRedemption,
-    requireComplianceSig,
-    initialGlobalDailyLimitUSDC,
-    initialUserDailyLimitUSDC,
-    initialCooldownSeconds,
-    initialBufferUSDC,
-    initialReserveRequirementBps,
-    initialWindow
+    xauFeed,
+    usdcFeed,
+    stalenessThreshold,
+    maxDevBps,
+    minUPG,
+    maxUPG
   )).wait();
   console.log("✅ Initialized");
+
+  // Post-init policy configuration to mimic prior UX
+  const initialRateValidityPeriod = 24 * 60 * 60;
+  const enableInstantRedemption = true;
+  const requireComplianceSig = false;
+  const initialGlobalDailyLimitUSDC = ethers.parseUnits("1000000", 6);
+  const initialUserDailyLimitUSDC = ethers.parseUnits("50000", 6);
+  const initialCooldownSeconds = 3600;
+  const initialBufferUSDC = ethers.parseUnits("100000", 6);
+  const initialReserveRequirementBps = 0; // start disabled to reduce friction
+  const initialWindow = { enabled: false, startHour: 0, endHour: 24 };
+
+  await (await c.setRateValidityPeriod(initialRateValidityPeriod)).wait();
+  await (await c.setRedemptionSettings(enableInstantRedemption, requireComplianceSig)).wait();
+  await (await c.updateLimits(
+    ethers.parseUnits("10", 6),
+    ethers.parseUnits("10000", 6),
+    initialGlobalDailyLimitUSDC,
+    initialUserDailyLimitUSDC,
+    initialCooldownSeconds
+  )).wait();
+  await (await c.setBuffer(initialBufferUSDC)).wait();
+  await (await c.setReserveRequirementBps(initialReserveRequirementBps)).wait();
+  await (await c.setProcessingWindow(initialWindow.enabled, initialWindow.startHour, initialWindow.endHour)).wait();
 
   // Assign roles
   console.log("⏳ Assigning roles...");
