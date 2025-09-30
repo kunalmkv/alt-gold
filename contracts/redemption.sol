@@ -20,14 +20,15 @@ pragma solidity ^0.8.22;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-import {IERC20MetadataUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
-import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 // -------- Chainlink Aggregator (price feed) --------
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -45,7 +46,7 @@ contract ALTGOLDRedemption is
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     // ========= Roles =========
     bytes32 public constant COMPLIANCE_ROLE   = keccak256("COMPLIANCE_ROLE");
@@ -61,7 +62,7 @@ contract ALTGOLDRedemption is
 
     // ========= External tokens =========
     IALTGOLDMinimal public altgold;
-    IERC20Upgradeable public usdc;
+    IERC20 public usdc;
     uint8 public altDecimals;   
     uint8 public usdcDecimals;   // typically 6
 
@@ -225,9 +226,9 @@ contract ALTGOLDRedemption is
         _grantRole(EMERGENCY_ROLE, admin);
 
         altgold = IALTGOLDMinimal(altgoldToken);
-        usdc    = IERC20Upgradeable(usdcToken);
+        usdc    = IERC20(usdcToken);
         altDecimals  = altgold.decimals();
-        usdcDecimals = IERC20MetadataUpgradeable(usdcToken).decimals();
+        usdcDecimals = IERC20Metadata(usdcToken).decimals();
 
         // economics
         goldWeightPerALT_g6 = initialGoldWeightPerALT_g6;
@@ -389,7 +390,7 @@ contract ALTGOLDRedemption is
 
         uint256 nonce = complianceNonce[msg.sender];
         bytes32 digest = _hashComplianceMessage(msg.sender, amountALT, expiry, nonce);
-        address signer = ECDSA.recover(ECDSA.toEthSignedMessageHash(digest), signature);
+        address signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(digest), signature);
         require(hasRole(COMPLIANCE_ROLE, signer), "Invalid compliance sig");
         complianceNonce[msg.sender]++;
 
@@ -437,7 +438,7 @@ contract ALTGOLDRedemption is
         }
 
         // Pull ALT
-        IERC20Upgradeable(address(altgold)).safeTransferFrom(msg.sender, address(this), amountALT);
+        IERC20(address(altgold)).safeTransferFrom(msg.sender, address(this), amountALT);
 
         // Emit request snapshot BEFORE settlement
         uint256 redemptionId = nextRedemptionId++;
