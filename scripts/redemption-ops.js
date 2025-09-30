@@ -55,9 +55,27 @@ async function deploy() {
 
   // Initialize with oracle-based params (new contract signature)
   const initialGoldWeightPerALT_g6 = ethers.parseUnits("1", 6);
-  if (!env.XAU_USD_FEED) throw new Error("XAU_USD_FEED missing in .env");
-  const xauFeed = env.XAU_USD_FEED;
-  const usdcFeed = env.USDC_USD_FEED && env.USDC_USD_FEED !== "0" ? env.USDC_USD_FEED : ethers.ZeroAddress;
+  // Ensure oracle feeds exist; if missing, deploy mock aggregators
+  let xauFeed = env.XAU_USD_FEED;
+  let usdcFeed = env.USDC_USD_FEED && env.USDC_USD_FEED !== "0" ? env.USDC_USD_FEED : ethers.ZeroAddress;
+  if (!xauFeed) {
+    console.log("⏳ XAU feed not set in .env, deploying MockAggregator for XAU/USD...");
+    const MockAgg = await ethers.getContractFactory("MockAggregator");
+    // decimals 8, initial answer 2400 * 1e8 (USD per troy ounce)
+    const mockXAU = await MockAgg.deploy(8n, 2400n * 10n ** 8n);
+    await mockXAU.waitForDeployment();
+    xauFeed = await mockXAU.getAddress();
+    console.log("✅ Mock XAU/USD feed:", xauFeed);
+  }
+  if (usdcFeed === ethers.ZeroAddress && env.USDC_USD_FEED) {
+    // if explicitly set to 0 in env, keep ZeroAddress to assume $1; otherwise if missing but desired, deploy a mock at 1.00
+    console.log("⏳ USDC feed not set, deploying MockAggregator for USDC/USD at 1.00...");
+    const MockAgg = await ethers.getContractFactory("MockAggregator");
+    const mockUSDC = await MockAgg.deploy(8n, 1n * 10n ** 8n);
+    await mockUSDC.waitForDeployment();
+    usdcFeed = await mockUSDC.getAddress();
+    console.log("✅ Mock USDC/USD feed:", usdcFeed);
+  }
   const stalenessThreshold = 60 * 60; // 1 hour
   const maxDevBps = 1000; // 10%
   const minUPG = ethers.parseUnits("30", 6); // sanity floor

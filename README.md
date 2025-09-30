@@ -1,4 +1,4 @@
-# ALT GOLD
+## ALT GOLD
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 <br/>
 
-<a href="https://sepolia.etherscan.io/address/0x6eDf5B5B53014e0249955142cE12026Cce055296#code"><b>ALTGOLDToken (Proxy) on Etherscan</b></a>
+<a href="https://sepolia.etherscan.io/address/0x49Ec351eBc1c8AdaE96cd8Be31B4e3fEF1cDE731#code"><b>ALTGOLDToken (Proxy) on Etherscan</b></a>
 ·
 <a href="https://sepolia.etherscan.io/address/0x88b2DF0C0fFd9eE80e2e230dEA71e324Ac4f9049#code"><b>ALTGOLDRedemption on Etherscan</b></a>
 ·
@@ -52,8 +52,8 @@ npx hardhat compile
 
 - **Network**: Sepolia (chainId 11155111)
 - **ALTGOLDToken (UUPS Proxy)**
-  - Proxy Address: `0x6eDf5B5B53014e0249955142cE12026Cce055296`
-  - Etherscan: `https://sepolia.etherscan.io/address/0x6eDf5B5B53014e0249955142cE12026Cce055296#code`
+  - Proxy Address: `0x49Ec351eBc1c8AdaE96cd8Be31B4e3fEF1cDE731`
+  - Etherscan: `https://sepolia.etherscan.io/address/0x49Ec351eBc1c8AdaE96cd8Be31B4e3fEF1cDE731#code`
 - **ALTGOLDRedemption**
   - Address: `0x88b2DF0C0fFd9eE80e2e230dEA71e324Ac4f9049`
   - Etherscan: `https://sepolia.etherscan.io/address/0x88b2DF0C0fFd9eE80e2e230dEA71e324Ac4f9049#code`
@@ -170,7 +170,7 @@ erDiagram
 
 ### User Interaction Flow
 
-#### 1. Token Acquisition Flow
+#### 1) Token Acquisition Flow
 ```
 User → [Must be Whitelisted] → ALTGOLD Token Contract
                                       │
@@ -180,7 +180,7 @@ User → [Must be Whitelisted] → ALTGOLD Token Contract
                             [Admin Mints to User]
 ```
 
-#### 2. Redemption Flow
+#### 2) Redemption Flow
 ```
 User Journey:
 ─────────────
@@ -435,29 +435,28 @@ npm run verify:redemption:sepolia
 ```
 
 
-Storage Layout Choices 
-ALTGOLDToken Contract Storage Layout
-Core State Variables Ordering
+## Storage Layout
 
-```
+### ALTGOLDToken – Core State Variables Ordering
 
+```solidity
 // Slot 0-39: OpenZeppelin Base Contracts (Reserved)
 // ├── ERC20Upgradeable storage
-// ├── PausableUpgradeable storage  
+// ├── PausableUpgradeable storage
 // ├── AccessControlUpgradeable storage
 // ├── ReentrancyGuardUpgradeable storage
 // └── UUPSUpgradeable storage
 
 // Slot 40-45: Whitelist Management
 mapping(address => WhitelistData) private _whitelistData;     // Slot 40
-address[] private _whitelistedAddresses;                       // Slot 41
-mapping(address => uint256) private _addressIndex;             // Slot 42
-uint256 private _totalWhitelisted;                             // Slot 43
+address[] private _whitelistedAddresses;                      // Slot 41
+mapping(address => uint256) private _addressIndex;            // Slot 42
+uint256 private _totalWhitelisted;                            // Slot 43
 
 // Slot 44-46: Gold Reserve Data
-GoldReserve public goldReserve;                                // Slot 44 (struct)
-uint256 public lastReserveUpdate;                              // Slot 45
-uint256 public reserveUpdateFrequency;                         // Slot 46
+GoldReserve public goldReserve;                               // Slot 44 (struct)
+uint256 public lastReserveUpdate;                             // Slot 45
+uint256 public reserveUpdateFrequency;                        // Slot 46
 
 // Slot 47-48: Minting Controls
 MintingLimits public mintingLimits;                           // Slot 47 (struct)
@@ -494,58 +493,30 @@ mapping(address => bool) public authorizedBurners;            // Slot 65
 uint256[50] private __gap;                                    // Future-proofing
 ```
 
-Reason for Token Storage Choices
-1. Whitelist Data First (Slots 40-43)
+#### Why this ordering?
+- **Whitelist first**: Hot path for transfers; minimizes SLOADs.
+- **Struct grouping**: Reserve/limit structs reduce reads; improves cohesion.
+- **Circuit-breaker block**: Related checks colocated for incident paths.
+- **Stats last**: Write-heavy; keeps hot storage uncluttered.
 
-Rationale: Most frequently accessed data in every transfer
-Gas Optimization: Hot storage slots for transfer operations
-Security: Critical compliance data in predictable locations
-
-2. Struct Packing Strategy
-
-```
+```solidity
 struct WhitelistData {
     bool isWhitelisted;      // 1 byte
-    uint128 addedAt;         // 16 bytes  
+    uint128 addedAt;         // 16 bytes
     uint128 removedAt;       // 16 bytes
     address addedBy;         // 20 bytes (new slot)
     string kycReferenceId;   // Dynamic (new slot)
 }
 ```
-Reason:
 
-Bool + two uint128s fit in single slot (32 bytes)
-Timestamp precision sufficient with uint128 (valid until year 10^38)
-Address and string in separate slots (unavoidable)
+### ALTGOLDRedemption – Storage Organization
 
-3. Reserve and Limits as Structs (Slots 44, 47-48)
-
-Rationale: Logical grouping of related data
-Benefit: Single SLOAD for multiple related values
-Trade-off: More complex upgrades, but cleaner code
-
-4. Circuit Breaker Variables Sequential (Slots 52-55)
-
-Rationale: Related emergency data together
-Optimization: Likely accessed together during anomaly checks
-Pattern: Status → Timestamp → Counters
-
-5. Statistics at End (Slots 60-64)
-
-Rationale: Write-only during operations, read-only for reporting
-Gas: Separated from hot paths to avoid unnecessary SLOADs
-Upgrade Safety: Can extend statistics without affecting core logic
-
-
-ALTGOLDRedemption Contract Storage Layout
-Redemption Contract Storage Organization
-
-```
+```solidity
 // Slot 0-39: OpenZeppelin Base (Reserved)
 
 // Slot 40-43: Token References
 IALTGOLDMinimal public altgold;                              // Slot 40
-IERC20Upgradeable public usdc;                               // Slot 41  
+IERC20 public usdc;                                          // Slot 41
 uint8 public altDecimals;                                    // Slot 42 (packed)
 uint8 public usdcDecimals;                                   // Slot 42 (packed)
 
@@ -555,7 +526,7 @@ uint256 public usdcPerGram;                                  // Slot 44
 uint256 public rateUpdatedAt;                                // Slot 45
 uint256 public rateValidityPeriod;                           // Slot 46
 
-// Slot 47-49: Oracle Configuration  
+// Slot 47-53: Oracle Configuration
 AggregatorV3Interface public xauUsdFeed;                     // Slot 47
 AggregatorV3Interface public usdcUsdFeed;                    // Slot 48
 bool public useUsdcUsdFeed;                                  // Slot 49 (packed)
@@ -564,38 +535,32 @@ uint16 public maxUpdateDeviationBps;                         // Slot 51 (packed)
 uint256 public minUsdcPerGram;                               // Slot 52
 uint256 public maxUsdcPerGram;                               // Slot 53
 
-// Slot 54-57: Redemption Settings
+// Slot 54-61: Redemption Settings & Limits
 uint256 public minRedemptionAmount;                          // Slot 54
 uint256 public maxRedemptionAmount;                          // Slot 55
 bool public instantRedemptionEnabled;                        // Slot 56 (packed)
 bool public complianceCheckRequired;                         // Slot 56 (packed)
-
-// Slot 57-62: Limits & Cooldowns
 uint256 public globalDailyLimitUSDC;                         // Slot 57
 uint256 public userDailyLimitUSDC;                           // Slot 58
 uint256 public cooldownSeconds;                              // Slot 59
 uint256 public currentDayStart;                              // Slot 60
 uint256 public globalDailyUsedUSDC;                          // Slot 61
 
-// Slot 62-64: User Tracking (Mappings)
+// Slot 62-66: User & Compliance Tracking
 mapping(address => uint256) public userDayStart;             // Slot 62
 mapping(address => uint256) public userDailyUsedUSDC;        // Slot 63
 mapping(address => uint256) public lastRedemptionTime;       // Slot 64
 mapping(address => uint256) public complianceNonce;          // Slot 65
 
-// Slot 66-67: Treasury
+// Slot 66-68: Treasury & Window
 uint256 public bufferUSDC;                                   // Slot 66
 uint16 public reserveRequirementBps;                         // Slot 67 (packed)
-
-// Slot 68-70: Processing Window
 ProcessingWindow public processingWindow;                    // Slot 68 (struct)
 
-// Slot 69-72: Redemption Records
+// Slot 69-76: Records & Stats
 mapping(uint256 => RedemptionRecord) public redemptions;     // Slot 69
 mapping(address => uint256[]) public userRedemptions;        // Slot 70
 uint256 public nextRedemptionId;                             // Slot 71
-
-// Slot 72-77: Statistics
 uint256 public totalRedeemedALT;                             // Slot 72
 uint256 public totalPaidUSDC;                                // Slot 73
 uint256 public totalRedemptionCount;                         // Slot 74
@@ -604,39 +569,12 @@ mapping(address => uint256) public userRedemptionCount;      // Slot 76
 
 // Slot 77-127: Storage Gap
 uint256[50] private __gap;
-
 ```
 
-Justification for Redemption Storage Choices
-1. Token References First (Slots 40-42)
-
-Rationale: Immutable after initialization, frequently read
-Packing: Both decimals in single byte each, same slot
-Security: Critical external dependencies at known locations
-
-2. Economics Before Oracle (Slots 43-46)
-
-Rationale: Core pricing data accessed on every redemption
-Separation: Manual rates vs oracle rates clearly delineated
-Caching: usdcPerGram cached from oracle for gas savings
-
-3. Oracle Configuration Grouped (Slots 47-53)
-
-Rationale: All oracle-related settings together
-Access Pattern: Read together during price updates
-Packing: useUsdcUsdFeed bool and maxUpdateDeviationBps uint16 packed
-
-4. Daily Limit Tracking Sequential (Slots 57-61)
-
-Rationale: Reset logic accesses these together
-Pattern: Limits → Current period → Usage
-Optimization: Minimizes SLOADs during limit checks
-
-5. User Mappings Clustered (Slots 62-65)
-
-Rationale: User-specific data isolated
-Gas: Each mapping gets unique storage tree
-Privacy: User data not mixed with system data
+#### Rationale highlights
+- **Token refs early**: Frequently read; immutable post-init.
+- **Economics before oracle**: Redemption path reads these first.
+- **Packed fields**: Bools and small ints share slots where safe.
 
 ### External Dependencies
 
