@@ -12,9 +12,9 @@
 
 <br/>
 
-<a href="https://sepolia.etherscan.io/address/0x49Ec351eBc1c8AdaE96cd8Be31B4e3fEF1cDE731#code"><b>ALTGOLDToken (Proxy) on Etherscan</b></a>
+<a href="https://sepolia.etherscan.io/address/0x4E9FB9BFAC54E66df63D342D5d6C7aa3AC2D1A77#code"><b>ALTGOLDToken (Proxy) on Etherscan</b></a>
 ·
-<a href="https://sepolia.etherscan.io/address/0x88b2DF0C0fFd9eE80e2e230dEA71e324Ac4f9049#code"><b>ALTGOLDRedemption on Etherscan</b></a>
+<a href="https://sepolia.etherscan.io/address/0xb71e62699B930aD83ba22798678ad542256c1e57#code"><b>ALTGOLDRedemption on Etherscan</b></a>
 ·
 
 ·
@@ -303,6 +303,213 @@ DEFAULT_ADMIN:
   • setProcessingWindow(enabled, startHour, endHour)
   • setReserveRequirementBps(bps)
   • cancelEmergencyWithdrawal()
+```
+### Process Flow Diagram
+
+## Complete Flow Diagram
+
+```mermaid
+flowchart TD
+    Start([👤 Customer Wants Gold-Backed Tokens])
+    
+    %% ===== PHASE 1: OFF-CHAIN ONBOARDING =====
+    subgraph Phase1[" "]
+        direction TB
+        A1[Customer Inquiry]
+        A2[Submit KYC/AML Documents]
+        A3{KYC Approved?}
+        A4[❌ Application Rejected]
+        A5[✅ Customer Verified<br/>KYC Reference ID Generated]
+        
+        A1 --> A2
+        A2 --> A3
+        A3 -->|No| A4
+        A3 -->|Yes| A5
+    end
+    
+    %% ===== PHASE 2: PAYMENT & GOLD ACQUISITION =====
+    subgraph Phase2[" "]
+        direction TB
+        B1[💰 Customer Pays Fiat Currency<br/>Bank Transfer/Wire]
+        B2[🏢 Company Receives Payment]
+        B3{Gold Acquisition}
+        B4[🥇 Purchase Physical Gold<br/>from Market]
+        B5[🏦 Allocate from<br/>Existing Vault]
+        B6[🔒 Gold Stored in<br/>Secure Vault]
+        
+        B1 --> B2
+        B2 --> B3
+        B3 -->|New Purchase| B4
+        B3 -->|Existing Inventory| B5
+        B4 --> B6
+        B5 --> B6
+    end
+    
+    %% ===== PHASE 3: AUDIT & VERIFICATION =====
+    subgraph Phase3[" "]
+        direction TB
+        C1[🔍 Independent Auditor<br/>Physical Verification]
+        C2[📋 Audit Report Created<br/>IPFS Hash/Reference]
+        C3[🎯 AUDITOR Role<br/>On-Chain Action]
+        C4["updateGoldReserve(<br/>totalGrams,<br/>tokenPerGram,<br/>auditReference)"]
+        C5[✅ Gold Reserves<br/>Updated On-Chain]
+        C6[📊 Max Mintable<br/>Calculated]
+        
+        C1 --> C2
+        C2 --> C3
+        C3 --> C4
+        C4 --> C5
+        C5 --> C6
+    end
+    
+    %% ===== PHASE 4: WHITELIST APPROVAL =====
+    subgraph Phase4[" "]
+        direction TB
+        D1[👥 WHITELIST_MANAGER Role]
+        D2["addToWhitelist(<br/>customerAddress,<br/>kycReferenceId)"]
+        D3[✅ Customer Wallet<br/>Whitelisted]
+        D4[🔓 Can Receive & Transfer<br/>ALTGOLD Tokens]
+        
+        D1 --> D2
+        D2 --> D3
+        D3 --> D4
+    end
+    
+    %% ===== PHASE 5: TOKEN MINTING =====
+    subgraph Phase5[" "]
+        direction TB
+        E1[🏭 SUPPLY_CONTROLLER Role]
+        E2["mint(<br/>customerAddress,<br/>amount,<br/>reason)"]
+        E3{Amount Check}
+        E4[📦 Small Order<br/>< 50,000 ALTGOLD]
+        E5[📦 Large Order<br/>≥ 50,000 ALTGOLD]
+        E6[⚡ Immediate Mint<br/>_executeMint]
+        E7[⏰ Create Timelock Request<br/>_createMintRequest]
+        E8[⏳ Wait 24 Hours]
+        E9[✅ EXECUTOR Role]
+        E10["executeMintRequest(<br/>requestId)"]
+        E11[🔍 Final Validation:<br/>- Whitelist still valid?<br/>- Gold backing sufficient?<br/>- Not cancelled?]
+        E12[✅ Tokens Minted]
+        
+        E1 --> E2
+        E2 --> E3
+        E3 -->|Small| E4
+        E3 -->|Large| E5
+        E4 --> E6
+        E5 --> E7
+        E6 --> E12
+        E7 --> E8
+        E8 --> E9
+        E9 --> E10
+        E10 --> E11
+        E11 --> E12
+    end
+    
+    %% ===== PHASE 6: CUSTOMER HOLDS TOKENS =====
+    subgraph Phase6[" "]
+        direction TB
+        F1[🎉 Customer Receives<br/>ALTGOLD Tokens]
+        F2{What to Do?}
+        F3[💼 Hold Tokens<br/>Store of Value]
+        F4[🔄 Transfer to Others<br/>Only Whitelisted]
+        F5[💱 Redeem for USDC<br/>Via Redemption Contract]
+        
+        F1 --> F2
+        F2 --> F3
+        F2 --> F4
+        F2 --> F5
+    end
+    
+    %% ===== PHASE 7: REDEMPTION PREPARATION =====
+    subgraph Phase7[" "]
+        direction TB
+        G1[📊 Oracle Price Update<br/>Anyone Can Call]
+        G2["updateUsdcPerGramFromOracle()"]
+        G3[🔗 Chainlink Oracles:<br/>XAU/USD + USDC/USD]
+        G4[🧮 Calculate:<br/>XAU/oz → USD/gram → USDC/gram]
+        G5[💾 Cache Price On-Chain:<br/>usdcPerGram]
+        G6[⏰ Set rateUpdatedAt]
+        G7[✅ Redemption Rate Ready]
+        
+        G1 --> G2
+        G2 --> G3
+        G3 --> G4
+        G4 --> G5
+        G5 --> G6
+        G6 --> G7
+    end
+    
+    %% ===== PHASE 8: REDEMPTION EXECUTION =====
+    subgraph Phase8[" "]
+        direction TB
+        H1[💱 Customer Initiates<br/>Redemption]
+        H2{Redemption Type}
+        H3["redeem(<br/>amountALT)"]
+        H4["redeemWithApproval(<br/>amountALT, expiry, signature)"]
+        H5[🔐 Compliance Signature<br/>Verification]
+        H6[✅ Pre-Redemption Checks]
+        H7["- Instant redemption enabled?<br/>- Amount within min/max?<br/>- User not blacklisted?<br/>- Price cache fresh?<br/>- Within processing window?<br/>- User whitelisted?<br/>- Cooldown passed?"]
+        H8[🧮 Calculate USDC Amount:<br/>amountALT × goldWeightPerALT × usdcPerGram]
+        H9[📊 Daily Limit Checks:<br/>- Global daily limit<br/>- User daily limit]
+        H10[🔥 Burn ALTGOLD<br/>from User Wallet]
+        H11[💸 Transfer USDC<br/>to User Wallet]
+        H12[📝 Record Statistics:<br/>- Total redeemed<br/>- User history<br/>- Daily usage]
+        H13[🎉 Redemption Complete]
+        
+        H1 --> H2
+        H2 -->|Standard| H3
+        H2 -->|With Compliance| H4
+        H3 --> H6
+        H4 --> H5
+        H5 --> H6
+        H6 --> H7
+        H7 --> H8
+        H8 --> H9
+        H9 --> H10
+        H10 --> H11
+        H11 --> H12
+        H12 --> H13
+    end
+    
+    %% ===== PHASE 9: POST-REDEMPTION =====
+    subgraph Phase9[" "]
+        direction TB
+        I1[💰 Customer Has USDC]
+        I2{Next Action}
+        I3[🏦 Withdraw to Bank<br/>Off-Chain Exchange]
+        I4[💱 Trade on DEX/CEX]
+        I5[🔄 Buy More ALTGOLD]
+        
+        I1 --> I2
+        I2 --> I3
+        I2 --> I4
+        I2 --> I5
+    end
+    
+    %% ===== FLOW CONNECTIONS =====
+    Start --> Phase1
+    Phase1 --> |Approved| Phase2
+    Phase2 --> Phase3
+    Phase3 --> Phase4
+    Phase4 --> Phase5
+    Phase5 --> Phase6
+    Phase6 --> |Choose to Redeem| Phase7
+    Phase7 --> Phase8
+    Phase8 --> Phase9
+    Phase9 --> |Cycle Repeats| Start
+    
+    %% ===== STYLING =====
+    classDef offChain fill:#FFE5B4,stroke:#FF8C00,stroke-width:2px
+    classDef onChain fill:#B4D7FF,stroke:#0066CC,stroke-width:2px
+    classDef oracle fill:#D4EDDA,stroke:#28A745,stroke-width:2px
+    classDef security fill:#F8D7DA,stroke:#DC3545,stroke-width:2px
+    classDef success fill:#D1ECF1,stroke:#0C5460,stroke-width:2px
+    
+    class A1,A2,A5,B1,B2,B4,B5,B6,C1,C2,I3 offChain
+    class C3,C4,C5,C6,D1,D2,D3,D4,E1,E2,E6,E7,E9,E10,E12,F1,H10,H11,H12 onChain
+    class G1,G2,G3,G4,G5,G6,G7 oracle
+    class H6,H7,H9,E11 security
+    class F1,H13,I1 success
 ```
 
 ### Data Flow Diagram

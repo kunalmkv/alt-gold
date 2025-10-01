@@ -7,7 +7,7 @@
     "test": "hardhat test",
     "deploy:altgold:sepolia": "hardhat run scripts/deploy-altgold-proxy.js --network sepolia",
     "deploy:setup:test": "hardhat run scripts/deploy-and-setup-test.js --network sepolia",
-    "deploy:redemption:sepolia": "hardhat run scripts/deploy-redemption-simple.js --network sepolia",
+    "deploy:redemption:sepolia": "hardhat run scripts/deploy-redemption.js --network sepolia",
     "verify:altgold:sepolia": "hardhat run scripts/verify-altgold.js --network sepolia",
     "verify:redemption:sepolia": "hardhat run scripts/verify-redemption.js --network sepolia",
     "console:sepolia": "hardhat console --network sepolia",
