@@ -306,210 +306,236 @@ DEFAULT_ADMIN:
 ```
 ### Process Flow Diagram
 
-## Complete Flow Diagram
+```mermaid
+sequenceDiagram
+    participant Customer
+    participant Company
+    participant Auditor
+    participant AuditorRole as AUDITOR Role
+    participant WhitelistMgr as WHITELIST_MANAGER
+    participant SupplyCtrl as SUPPLY_CONTROLLER
+    participant Executor as EXECUTOR Role
+    participant ALTGOLDContract as ALTGOLD Contract
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 1: OFF-CHAIN ONBOARDING ═══════════
+    
+    Customer->>Company: 1. Inquiry for Gold-Backed Tokens
+    Company->>Customer: Send KYC/AML Forms
+    Customer->>Company: 2. Submit KYC Documents + Identity Verification
+    Company->>Company: 3. Verify KYC/AML Compliance
+    Company->>Customer: ✅ KYC Approved (Reference ID: KYC-2024-001)
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 2: PAYMENT & GOLD ═══════════
+    
+    Customer->>Company: 4. Pay Fiat Currency ($26,000 USD)
+    Company->>Company: 5. Receive Payment Confirmation
+    Company->>Company: 6. Purchase Physical Gold (10kg from market)<br/>OR Allocate from Vault
+    Company->>Company: 7. Store Gold in Secure Vault
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 3: AUDIT & VERIFICATION ═══════════
+    
+    Company->>Auditor: 8. Request Independent Audit
+    Auditor->>Auditor: 9. Physical Verification of Gold in Vault
+    Auditor->>Auditor: 10. Create Audit Report (IPFS: QmX...abc)
+    Auditor->>AuditorRole: 11. Prepare On-Chain Update
+    
+    Note over AuditorRole,ALTGOLDContract: 🔗 ON-CHAIN TRANSACTION
+    AuditorRole->>ALTGOLDContract: updateGoldReserve(<br/>  totalGrams: 10000_000000,<br/>  tokenPerGram: 1_000000,<br/>  auditRef: "QmX...abc"<br/>)
+    ALTGOLDContract->>ALTGOLDContract: ✅ Update goldReserve State
+    ALTGOLDContract->>ALTGOLDContract: 📊 Calculate Max Mintable:<br/>(10,000g × 1.0) = 10,000 ALTGOLD
+    ALTGOLDContract-->>AuditorRole: ✅ GoldReserveUpdated Event
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 4: WHITELIST APPROVAL ═══════════
+    
+    Company->>WhitelistMgr: 12. Approve Customer Wallet
+    
+    Note over WhitelistMgr,ALTGOLDContract: 🔗 ON-CHAIN TRANSACTION
+    WhitelistMgr->>ALTGOLDContract: addToWhitelist(<br/>  account: 0xCustomer...,<br/>  kycRef: "KYC-2024-001"<br/>)
+    ALTGOLDContract->>ALTGOLDContract: ✅ Add to _whitelistData
+    ALTGOLDContract->>ALTGOLDContract: ✅ Increment _totalWhitelisted
+    ALTGOLDContract-->>WhitelistMgr: ✅ WhitelistUpdated Event
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 5A: SMALL MINT (< 50k) ═══════════
+    
+    Company->>SupplyCtrl: 13. Initiate Token Minting (10 ALTGOLD)
+    
+    Note over SupplyCtrl,ALTGOLDContract: 🔗 ON-CHAIN TRANSACTION
+    SupplyCtrl->>ALTGOLDContract: mint(<br/>  to: 0xCustomer...,<br/>  amount: 10_000000,<br/>  reason: "Customer Order #12345"<br/>)
+    ALTGOLDContract->>ALTGOLDContract: Check: amount < largeMintThreshold?
+    ALTGOLDContract->>ALTGOLDContract: ✅ YES (10 < 50,000)
+    ALTGOLDContract->>ALTGOLDContract: Validate Minting Limits:<br/>- Per-tx limit ✓<br/>- Daily limit ✓<br/>- Weekly limit ✓<br/>- Cooldown ✓
+    ALTGOLDContract->>ALTGOLDContract: Check Gold Backing:<br/>10 ≤ 10,000 available ✓
+    ALTGOLDContract->>ALTGOLDContract: ⚡ _executeMint() IMMEDIATELY
+    ALTGOLDContract->>ALTGOLDContract: 🪙 _mint(Customer, 10_000000)
+    ALTGOLDContract->>ALTGOLDContract: Update Stats:<br/>totalMinted += 10<br/>dailyMinted += 10
+    ALTGOLDContract-->>SupplyCtrl: ✅ SupplyIncreased Event
+    ALTGOLDContract-->>Customer: 🎉 10 ALTGOLD Tokens Received!
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 5B: LARGE MINT (≥ 50k) ═══════════
+    
+    Company->>SupplyCtrl: 14. Initiate Large Mint (100,000 ALTGOLD)
+    
+    Note over SupplyCtrl,ALTGOLDContract: 🔗 ON-CHAIN TRANSACTION (Day 1)
+    SupplyCtrl->>ALTGOLDContract: mint(<br/>  to: 0xInstitution...,<br/>  amount: 100000_000000,<br/>  reason: "Institutional Order #67890"<br/>)
+    ALTGOLDContract->>ALTGOLDContract: Check: amount ≥ largeMintThreshold?
+    ALTGOLDContract->>ALTGOLDContract: ✅ YES (100,000 ≥ 50,000)
+    ALTGOLDContract->>ALTGOLDContract: ⏰ _createMintRequest()
+    ALTGOLDContract->>ALTGOLDContract: Create MintRequest #42:<br/>- executeAfter: now + 24h<br/>- to: 0xInstitution...<br/>- amount: 100,000<br/>- status: PENDING
+    ALTGOLDContract->>ALTGOLDContract: pendingMints += 100,000
+    ALTGOLDContract-->>SupplyCtrl: ⏰ MintRequestCreated Event (ID: 42)
+    
+    Note over SupplyCtrl,ALTGOLDContract: ⏳ WAIT 24 HOURS (Timelock Period)
+    
+    Note over Executor,ALTGOLDContract: 🔗 ON-CHAIN TRANSACTION (Day 2)
+    Executor->>ALTGOLDContract: executeMintRequest(requestId: 42)
+    ALTGOLDContract->>ALTGOLDContract: Validate Request:<br/>- Not executed? ✓<br/>- Not cancelled? ✓<br/>- Timelock expired? ✓<br/>- Recipient still whitelisted? ✓<br/>- Gold backing sufficient? ✓
+    ALTGOLDContract->>ALTGOLDContract: 🪙 _mint(Institution, 100000_000000)
+    ALTGOLDContract->>ALTGOLDContract: Update:<br/>request.executed = true<br/>pendingMints -= 100,000<br/>totalMinted += 100,000
+    ALTGOLDContract-->>Executor: ✅ MintRequestExecuted Event
+    ALTGOLDContract-->>Customer: 🎉 100,000 ALTGOLD Tokens Received!
+    
+    Note over Customer,ALTGOLDContract: ═══════════ PHASE 6: HOLDING PERIOD ═══════════
+    
+    Customer->>Customer: 💼 Hold ALTGOLD as Store of Value
+    Customer->>Customer: Gold Price Appreciates Over Time
+    
+    Note over Customer,ALTGOLDContract: Customer Can:<br/>- Hold tokens<br/>- Transfer to other whitelisted users<br/>- Redeem for USDC (continue to Phase 7)
+```
+
+---
+
+## Complete Redemption Flow (Vertical Timeline)
 
 ```mermaid
-flowchart TD
-    Start([👤 Customer Wants Gold-Backed Tokens])
+sequenceDiagram
+    participant Customer
+    participant OracleUpdater as Anyone (Oracle Updater)
+    participant ChainlinkXAU as Chainlink XAU/USD
+    participant ChainlinkUSDC as Chainlink USDC/USD
+    participant RedemptionContract as Redemption Contract
+    participant ALTGOLDContract as ALTGOLD Contract
+    participant USDCContract as USDC Contract
     
-    %% ===== PHASE 1: OFF-CHAIN ONBOARDING =====
-    subgraph Phase1[" "]
-        direction TB
-        A1[Customer Inquiry]
-        A2[Submit KYC/AML Documents]
-        A3{KYC Approved?}
-        A4[❌ Application Rejected]
-        A5[✅ Customer Verified<br/>KYC Reference ID Generated]
-        
-        A1 --> A2
-        A2 --> A3
-        A3 -->|No| A4
-        A3 -->|Yes| A5
-    end
+    Note over Customer,USDCContract: ═══════════ PHASE 7: ORACLE PRICE UPDATE ═══════════
     
-    %% ===== PHASE 2: PAYMENT & GOLD ACQUISITION =====
-    subgraph Phase2[" "]
-        direction TB
-        B1[💰 Customer Pays Fiat Currency<br/>Bank Transfer/Wire]
-        B2[🏢 Company Receives Payment]
-        B3{Gold Acquisition}
-        B4[🥇 Purchase Physical Gold<br/>from Market]
-        B5[🏦 Allocate from<br/>Existing Vault]
-        B6[🔒 Gold Stored in<br/>Secure Vault]
-        
-        B1 --> B2
-        B2 --> B3
-        B3 -->|New Purchase| B4
-        B3 -->|Existing Inventory| B5
-        B4 --> B6
-        B5 --> B6
-    end
+    Customer->>Customer: 🤔 Decide to Redeem ALTGOLD for USDC
     
-    %% ===== PHASE 3: AUDIT & VERIFICATION =====
-    subgraph Phase3[" "]
-        direction TB
-        C1[🔍 Independent Auditor<br/>Physical Verification]
-        C2[📋 Audit Report Created<br/>IPFS Hash/Reference]
-        C3[🎯 AUDITOR Role<br/>On-Chain Action]
-        C4["updateGoldReserve(<br/>totalGrams,<br/>tokenPerGram,<br/>auditReference)"]
-        C5[✅ Gold Reserves<br/>Updated On-Chain]
-        C6[📊 Max Mintable<br/>Calculated]
-        
-        C1 --> C2
-        C2 --> C3
-        C3 --> C4
-        C4 --> C5
-        C5 --> C6
-    end
+    Note over OracleUpdater,RedemptionContract: 🔗 PERMISSIONLESS ORACLE UPDATE
+    OracleUpdater->>RedemptionContract: updateUsdcPerGramFromOracle()
+    RedemptionContract->>ChainlinkXAU: latestRoundData()
+    ChainlinkXAU-->>RedemptionContract: XAU/USD = $2,600 per troy ounce<br/>(decimals: 8, updated: 5 min ago)
     
-    %% ===== PHASE 4: WHITELIST APPROVAL =====
-    subgraph Phase4[" "]
-        direction TB
-        D1[👥 WHITELIST_MANAGER Role]
-        D2["addToWhitelist(<br/>customerAddress,<br/>kycReferenceId)"]
-        D3[✅ Customer Wallet<br/>Whitelisted]
-        D4[🔓 Can Receive & Transfer<br/>ALTGOLD Tokens]
-        
-        D1 --> D2
-        D2 --> D3
-        D3 --> D4
-    end
+    RedemptionContract->>RedemptionContract: Validate XAU Feed:<br/>- answer > 0? ✓<br/>- roundId valid? ✓<br/>- not stale? ✓
     
-    %% ===== PHASE 5: TOKEN MINTING =====
-    subgraph Phase5[" "]
-        direction TB
-        E1[🏭 SUPPLY_CONTROLLER Role]
-        E2["mint(<br/>customerAddress,<br/>amount,<br/>reason)"]
-        E3{Amount Check}
-        E4[📦 Small Order<br/>< 50,000 ALTGOLD]
-        E5[📦 Large Order<br/>≥ 50,000 ALTGOLD]
-        E6[⚡ Immediate Mint<br/>_executeMint]
-        E7[⏰ Create Timelock Request<br/>_createMintRequest]
-        E8[⏳ Wait 24 Hours]
-        E9[✅ EXECUTOR Role]
-        E10["executeMintRequest(<br/>requestId)"]
-        E11[🔍 Final Validation:<br/>- Whitelist still valid?<br/>- Gold backing sufficient?<br/>- Not cancelled?]
-        E12[✅ Tokens Minted]
-        
-        E1 --> E2
-        E2 --> E3
-        E3 -->|Small| E4
-        E3 -->|Large| E5
-        E4 --> E6
-        E5 --> E7
-        E6 --> E12
-        E7 --> E8
-        E8 --> E9
-        E9 --> E10
-        E10 --> E11
-        E11 --> E12
-    end
+    RedemptionContract->>ChainlinkUSDC: latestRoundData() [OPTIONAL]
+    ChainlinkUSDC-->>RedemptionContract: USDC/USD = $1.00<br/>(or assume $1.00 if not set)
     
-    %% ===== PHASE 6: CUSTOMER HOLDS TOKENS =====
-    subgraph Phase6[" "]
-        direction TB
-        F1[🎉 Customer Receives<br/>ALTGOLD Tokens]
-        F2{What to Do?}
-        F3[💼 Hold Tokens<br/>Store of Value]
-        F4[🔄 Transfer to Others<br/>Only Whitelisted]
-        F5[💱 Redeem for USDC<br/>Via Redemption Contract]
-        
-        F1 --> F2
-        F2 --> F3
-        F2 --> F4
-        F2 --> F5
-    end
+    RedemptionContract->>RedemptionContract: 🧮 Calculate USDC/gram:<br/><br/>Step 1: XAU/oz → USD/gram<br/>$2,600/oz ÷ 31.103476g = $83.58/g<br/><br/>Step 2: USD/gram → USDC/gram<br/>$83.58 ÷ $1.00 = 83.58 USDC<br/><br/>Step 3: Convert to USDC units (6 decimals)<br/>83.58 × 1e6 = 83_580_000
     
-    %% ===== PHASE 7: REDEMPTION PREPARATION =====
-    subgraph Phase7[" "]
-        direction TB
-        G1[📊 Oracle Price Update<br/>Anyone Can Call]
-        G2["updateUsdcPerGramFromOracle()"]
-        G3[🔗 Chainlink Oracles:<br/>XAU/USD + USDC/USD]
-        G4[🧮 Calculate:<br/>XAU/oz → USD/gram → USDC/gram]
-        G5[💾 Cache Price On-Chain:<br/>usdcPerGram]
-        G6[⏰ Set rateUpdatedAt]
-        G7[✅ Redemption Rate Ready]
-        
-        G1 --> G2
-        G2 --> G3
-        G3 --> G4
-        G4 --> G5
-        G5 --> G6
-        G6 --> G7
-    end
+    RedemptionContract->>RedemptionContract: ✅ Cache Price:<br/>usdcPerGram = 83_580_000<br/>rateUpdatedAt = block.timestamp
     
-    %% ===== PHASE 8: REDEMPTION EXECUTION =====
-    subgraph Phase8[" "]
-        direction TB
-        H1[💱 Customer Initiates<br/>Redemption]
-        H2{Redemption Type}
-        H3["redeem(<br/>amountALT)"]
-        H4["redeemWithApproval(<br/>amountALT, expiry, signature)"]
-        H5[🔐 Compliance Signature<br/>Verification]
-        H6[✅ Pre-Redemption Checks]
-        H7["- Instant redemption enabled?<br/>- Amount within min/max?<br/>- User not blacklisted?<br/>- Price cache fresh?<br/>- Within processing window?<br/>- User whitelisted?<br/>- Cooldown passed?"]
-        H8[🧮 Calculate USDC Amount:<br/>amountALT × goldWeightPerALT × usdcPerGram]
-        H9[📊 Daily Limit Checks:<br/>- Global daily limit<br/>- User daily limit]
-        H10[🔥 Burn ALTGOLD<br/>from User Wallet]
-        H11[💸 Transfer USDC<br/>to User Wallet]
-        H12[📝 Record Statistics:<br/>- Total redeemed<br/>- User history<br/>- Daily usage]
-        H13[🎉 Redemption Complete]
-        
-        H1 --> H2
-        H2 -->|Standard| H3
-        H2 -->|With Compliance| H4
-        H3 --> H6
-        H4 --> H5
-        H5 --> H6
-        H6 --> H7
-        H7 --> H8
-        H8 --> H9
-        H9 --> H10
-        H10 --> H11
-        H11 --> H12
-        H12 --> H13
-    end
+    RedemptionContract-->>OracleUpdater: ✅ RateUpdated Event
     
-    %% ===== PHASE 9: POST-REDEMPTION =====
-    subgraph Phase9[" "]
-        direction TB
-        I1[💰 Customer Has USDC]
-        I2{Next Action}
-        I3[🏦 Withdraw to Bank<br/>Off-Chain Exchange]
-        I4[💱 Trade on DEX/CEX]
-        I5[🔄 Buy More ALTGOLD]
-        
-        I1 --> I2
-        I2 --> I3
-        I2 --> I4
-        I2 --> I5
-    end
+    Note over Customer,USDCContract: ═══════════ PHASE 8: REDEMPTION EXECUTION ═══════════
     
-    %% ===== FLOW CONNECTIONS =====
-    Start --> Phase1
-    Phase1 --> |Approved| Phase2
-    Phase2 --> Phase3
-    Phase3 --> Phase4
-    Phase4 --> Phase5
-    Phase5 --> Phase6
-    Phase6 --> |Choose to Redeem| Phase7
-    Phase7 --> Phase8
-    Phase8 --> Phase9
-    Phase9 --> |Cycle Repeats| Start
+    Customer->>Customer: Check Current Rate:<br/>1 ALTGOLD (1g) = 83.58 USDC
+    Customer->>Customer: Decide to Redeem: 1,000 ALTGOLD
     
-    %% ===== STYLING =====
-    classDef offChain fill:#FFE5B4,stroke:#FF8C00,stroke-width:2px
-    classDef onChain fill:#B4D7FF,stroke:#0066CC,stroke-width:2px
-    classDef oracle fill:#D4EDDA,stroke:#28A745,stroke-width:2px
-    classDef security fill:#F8D7DA,stroke:#DC3545,stroke-width:2px
-    classDef success fill:#D1ECF1,stroke:#0C5460,stroke-width:2px
+    Note over Customer,RedemptionContract: 🔗 ON-CHAIN TRANSACTION
+    Customer->>RedemptionContract: redeem(amountALT: 1000_000000)
     
-    class A1,A2,A5,B1,B2,B4,B5,B6,C1,C2,I3 offChain
-    class C3,C4,C5,C6,D1,D2,D3,D4,E1,E2,E6,E7,E9,E10,E12,F1,H10,H11,H12 onChain
-    class G1,G2,G3,G4,G5,G6,G7 oracle
-    class H6,H7,H9,E11 security
-    class F1,H13,I1 success
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 1: Settings ═══
+    RedemptionContract->>RedemptionContract: instantRedemptionEnabled? ✓
+    RedemptionContract->>RedemptionContract: complianceCheckRequired? ✓
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 2: Amount ═══
+    RedemptionContract->>RedemptionContract: amount ≥ minRedemptionAmount? ✓<br/>(1,000 ≥ 1)
+    RedemptionContract->>RedemptionContract: amount ≤ maxRedemptionAmount? ✓<br/>(1,000 ≤ 1,000,000)
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 3: User Status ═══
+    RedemptionContract->>RedemptionContract: !blacklisted[user]? ✓
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 4: Rate Freshness ═══
+    RedemptionContract->>RedemptionContract: goldWeightPerALT > 0? ✓<br/>(1.0g per ALTGOLD)
+    RedemptionContract->>RedemptionContract: usdcPerGram > 0? ✓<br/>(83.58 USDC/g)
+    RedemptionContract->>RedemptionContract: Price not expired? ✓<br/>(updated 5 min ago < 1 hour validity)
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 5: Time Window ═══
+    RedemptionContract->>RedemptionContract: Within processing window? ✓<br/>(Mon-Fri 9am-5pm UTC)
+    
+    RedemptionContract->>ALTGOLDContract: isWhitelisted(customer)
+    ALTGOLDContract-->>RedemptionContract: ✅ true
+    
+    RedemptionContract->>ALTGOLDContract: isWhitelisted(redemptionContract)
+    ALTGOLDContract-->>RedemptionContract: ✅ true
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 6: Cooldown ═══
+    RedemptionContract->>RedemptionContract: Time since last redemption > cooldown? ✓<br/>(2 hours > 1 hour required)
+    
+    RedemptionContract->>RedemptionContract: ═══ CALCULATE PAYOUT ═══
+    RedemptionContract->>RedemptionContract: 🧮 USDC Amount:<br/><br/>amountALT × goldWeightPerALT × usdcPerGram<br/>────────────────────────────────────────<br/>           WEIGHT_PRECISION<br/><br/>= 1,000 × 1_000000 × 83_580_000<br/>  ─────────────────────────────<br/>         1_000_000<br/><br/>= 83,580_000000 (83,580 USDC)
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 7: Daily Limits ═══
+    RedemptionContract->>RedemptionContract: Global Daily Limit:<br/>todayUsed + 83,580 ≤ 1,000,000? ✓
+    RedemptionContract->>RedemptionContract: User Daily Limit:<br/>userUsed + 83,580 ≤ 100,000? ✓
+    
+    RedemptionContract->>RedemptionContract: ═══ PRE-CHECK 8: USDC Reserve ═══
+    RedemptionContract->>USDCContract: balanceOf(redemptionContract)
+    USDCContract-->>RedemptionContract: 500,000 USDC available
+    RedemptionContract->>RedemptionContract: Reserve sufficient? ✓<br/>(500,000 ≥ 83,580 + buffer)
+    
+    Note over RedemptionContract: ✅ ALL PRE-CHECKS PASSED
+    
+    RedemptionContract->>RedemptionContract: ═══ ATOMIC SETTLEMENT ═══
+    
+    Note over Customer,USDCContract: Step 1: Pull ALTGOLD from User
+    RedemptionContract->>ALTGOLDContract: transferFrom(<br/>  from: customer,<br/>  to: redemptionContract,<br/>  amount: 1000_000000<br/>)
+    ALTGOLDContract->>ALTGOLDContract: Check allowance ✓
+    ALTGOLDContract->>ALTGOLDContract: Check balance ✓
+    ALTGOLDContract->>ALTGOLDContract: Transfer tokens
+    ALTGOLDContract-->>RedemptionContract: ✅ Transfer successful
+    
+    Note over RedemptionContract,ALTGOLDContract: Step 2: Burn ALTGOLD
+    RedemptionContract->>ALTGOLDContract: burn(<br/>  from: redemptionContract,<br/>  amount: 1000_000000,<br/>  reason: "Redemption #123"<br/>)
+    ALTGOLDContract->>ALTGOLDContract: 🔥 _burn(1,000 ALTGOLD)
+    ALTGOLDContract->>ALTGOLDContract: totalSupply -= 1,000
+    ALTGOLDContract->>ALTGOLDContract: totalBurned += 1,000
+    ALTGOLDContract-->>RedemptionContract: ✅ SupplyDecreased Event
+    
+    Note over RedemptionContract,USDCContract: Step 3: Transfer USDC to User
+    RedemptionContract->>USDCContract: transfer(<br/>  to: customer,<br/>  amount: 83_580_000000<br/>)
+    USDCContract->>USDCContract: Transfer 83,580 USDC
+    USDCContract-->>RedemptionContract: ✅ Transfer successful
+    
+    RedemptionContract->>RedemptionContract: ═══ UPDATE STATISTICS ═══
+    RedemptionContract->>RedemptionContract: Record Redemption:<br/>- redemptionId: 123<br/>- user: customer<br/>- amountALT: 1,000<br/>- amountUSDC: 83,580<br/>- timestamp: now
+    
+    RedemptionContract->>RedemptionContract: Update Global Stats:<br/>totalRedeemedALT += 1,000<br/>totalPaidUSDC += 83,580<br/>totalRedemptionCount += 1
+    
+    RedemptionContract->>RedemptionContract: Update User Stats:<br/>userTotalRedeemed[customer] += 1,000<br/>userRedemptionCount[customer] += 1<br/>lastRedemptionTime[customer] = now
+    
+    RedemptionContract->>RedemptionContract: Update Daily Limits:<br/>globalDailyUsedUSDC += 83,580<br/>userDailyUsedUSDC[customer] += 83,580
+    
+    RedemptionContract-->>Customer: ✅ RedemptionExecuted Event
+    
+    Note over Customer,USDCContract: 🎉 REDEMPTION COMPLETE!
+    
+    Customer->>Customer: ✅ Received 83,580 USDC
+    Customer->>Customer: ✅ Burned 1,000 ALTGOLD
+    Customer->>Customer: 📊 Net Position:<br/>- ALTGOLD: -1,000<br/>- USDC: +83,580
+    
+    Note over Customer,USDCContract: ═══════════ PHASE 9: POST-REDEMPTION ═══════════
+    
+    Customer->>Customer: 💰 Options with USDC:
+    
+    Note over Customer: Option 1: Withdraw to Bank
+    Customer->>Customer: Use off-chain exchange<br/>to convert USDC → Fiat
+    
+    Note over Customer: Option 2: Trade/Invest
+    Customer->>Customer: Use USDC in DeFi protocols<br/>or trade on DEX/CEX
+    
+    Note over Customer: Option 3: Buy More ALTGOLD
+    Customer->>Company: Start new purchase cycle
 ```
 
 ### Data Flow Diagram
